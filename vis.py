@@ -54,13 +54,23 @@ class NodeStructure:
     """
 
     def __init__(self):
+        """
+        initializing the class with a dictionary and a generator function
+        """
         self.dictionary: Dict[str, str] = {}
         self.nodes = node_generator()
 
     def _genfunc(self):
+        """
+        this is a protected function to iterate through the node references
+        """
         return next(self.nodes)
 
     def get_node(self, uri: str) -> str:
+        """
+        if the uri has not been in the dictionary create a new item,
+        this creates a special form that is in the form `A(ex:Class)`
+        """
         try:
             return self.dictionary[uri]
         except KeyError:
