@@ -19,36 +19,36 @@ This script takes the OWL restrictions in an ontology file and shows how a
 specific class relates to the rest of the ontology. For example, the [gist
 class](https://www.semanticarts.com/gist/) "Agreement" is defined like this:
 
-```
+```turtle
 gist:Agreement
-	a owl:Class ;
-	rdfs:isDefinedBy <https://ontologies.semanticarts.com/o/gistCore> ;
-	owl:equivalentClass [
-		a owl:Class ;
-		owl:intersectionOf (
-			gist:Commitment
-			[
-				a owl:Restriction ;
-				owl:onProperty gist:hasParty ;
-				owl:someValuesFrom [
-					a owl:Class ;
-					owl:unionOf (
-						gist:Organization
-						gist:Person
-					) ;
-				] ;
-			]
-			[
-				a owl:Restriction ;
-				owl:onProperty gist:hasDirectPart ;
-				owl:onClass gist:Obligation ;
-				owl:minQualifiedCardinality "2"^^xsd:nonNegativeInteger ;
-			]
-		) ;
-	] ;
-	skos:definition "Something which two or more People or Organizations mutually commit to do."^^xsd:string ;
-	skos:prefLabel "Agreement"^^xsd:string ;
-	.
+  a owl:Class ;
+  rdfs:isDefinedBy <https://ontologies.semanticarts.com/o/gistCore> ;
+    owl:equivalentClass [
+      a owl:Class ;
+      owl:intersectionOf (
+        gist:Commitment
+        [
+          a owl:Restriction ;
+          owl:onProperty gist:hasParty ;
+          owl:someValuesFrom [
+            a owl:Class ;
+            owl:unionOf (
+              gist:Organization
+              gist:Person
+            ) ;
+          ] ;
+        ]
+        [
+          a owl:Restriction ;
+          owl:onProperty gist:hasDirectPart ;
+          owl:onClass gist:Obligation ;
+          owl:minQualifiedCardinality "2"^^xsd:nonNegativeInteger ;
+        ]
+      ) ;
+    ] ;
+  skos:definition "Something which two or more People or Organizations mutually commit to do."^^xsd:string ;
+  skos:prefLabel "Agreement"^^xsd:string ; 
+.
 
 ```
 
