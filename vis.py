@@ -2,8 +2,11 @@
 
 import argparse
 from dataclasses import dataclass
-from rdflib import Graph, URIRef, OWL, RDFS, RDF, SKOS
-from typing import Tuple, Dict, Generator, List
+from rdflib import Graph, URIRef, OWL, RDFS, RDF, SKOS, term
+from typing import Tuple, Dict, Generator, List, Set
+
+
+Node = term.Node
 
 store = Graph()
 
@@ -57,7 +60,7 @@ class NodeStructure:
         """
         initializing the class with a dictionary and a generator function
         """
-        self.dictionary: Dict[str, str] = {}
+        self.dictionary = {}
         self.nodes = node_generator()
 
     def _genfunc(self):
@@ -78,9 +81,6 @@ class NodeStructure:
             self.dictionary[uri] = node
             name = format_values(str(uri))
             return f"{node}({name})"
-
-
-nodes = NodeStructure()
 
 
 def format_values(value: str) -> str:
@@ -109,7 +109,7 @@ def expand_prefix_uri(value: str) -> str:
     return f"{namespace}{local_name}"
 
 
-def find_label(term: URIRef) -> str:
+def find_label(term: Node) -> str:
     """
     Find the best label for a given URI.
     First, skos:prefLabel
@@ -119,17 +119,17 @@ def find_label(term: URIRef) -> str:
     """
     label = list(store.objects(subject=term, predicate=SKOS.prefLabel))
     if len(label) == 1:
-        return label.pop()
+        return str(label.pop())
     label = list(store.objects(subject=term, predicate=RDFS.label))
     if len(label) == 1:
-        return label.pop()
+        return str(label.pop())
     label = list(store.objects(subject=term, predicate=GIST.name))
     if len(label) == 1:
-        return label.pop()
+        return str(label.pop())
     return format_values(str(term))
 
 
-def array2list(term: URIRef, ag: list):
+def array2list(term: Node, ag: list):
     """
     Turn a RDF List into a python list
     """
@@ -141,8 +141,89 @@ def array2list(term: URIRef, ag: list):
     return array2list(rest, ag)
 
 
+def parse_some_values(
+    some_values: List[Node],
+    prop: Node,
+    aggregator: list,
+    display_subject: Node,
+    visited_nodes: set,
+):
+    """
+    Parse the owl:someValues predicate
+    owl:someValues can be either a list or a single value, this handles both cases
+    """
+    value = some_values.pop()
+    # print(prop, value)
+    union = list(store.objects(subject=value, predicate=OWL.unionOf))
+    if len(union) == 0:
+        aggregator.append((display_subject, prop, value))
+        return graph_traversal(value, aggregator, value, visited_nodes)
+    elif len(union) == 1:
+        for uni in array2list(union[0], []):
+            aggregator.append((display_subject, prop, uni))
+            aggregator, visited_nodes = graph_traversal(
+                uni, aggregator, uni, visited_nodes
+            )
+        return (aggregator, visited_nodes)
+    else:
+        return (aggregator, visited_nodes)
+
+
+def parse_owl_restrictions(
+    subject: Node, aggregator: list, display_subject: Node, visited_nodes: set
+):
+    """
+    The subject argument is the subject of an owl:Restriction, and this provides
+    links to other objects through that restriction
+    """
+    # find the properties for the owl restriction
+    prop = list(store.objects(subject=subject, predicate=OWL.onProperty)).pop()
+    # if the restriction is a datatype property just pass buy it
+    # TODO: datatype properties could be included in a class object
+    # for now we are removing these
+    if (prop, RDF.type, OWL.DatatypeProperty) in store:
+        return (aggregator, visited_nodes)
+    class_objects = list(store.objects(subject=subject, predicate=OWL.onClass))
+    some_values = list(store.objects(subject=subject, predicate=OWL.someValuesFrom))
+    all_values = list(store.objects(subject=subject, predicate=OWL.allValuesFrom))
+    has_value = list(store.objects(subject=subject, predicate=OWL.hasValue))
+    # if the restriction is a class object iterate into the class object
+    if len(class_objects) == 1:
+        class_object = class_objects.pop()
+        aggregator.append((display_subject, prop, class_object))
+        aggregator, visited_nodes = graph_traversal(
+            class_object, aggregator, class_object, visited_nodes
+        )
+    # if the restriction has some values, iterate into the list of these values
+    elif len(some_values) == 1:
+        # if all values, iterate into this value
+        aggregator, visited_nodes = parse_some_values(
+            some_values, prop, aggregator, display_subject, visited_nodes
+        )
+    elif len(all_values) == 1:
+        value = all_values.pop()
+        aggregator.append((display_subject, prop, value))
+        aggregator, visited_nodes = graph_traversal(
+            value, aggregator, value, visited_nodes
+        )
+    elif len(has_value) == 1:
+        value = has_value.pop()
+        aggregator.append((display_subject, prop, value))
+        aggregator, visited_nodes = graph_traversal(
+            value, aggregator, value, visited_nodes
+        )
+    # currently we aren't doing anything for cardinality
+    elif (subject, OWL.minCardinality, None) in store:
+        return (aggregator, visited_nodes)
+    else:
+        print(f"Error in Traversing Graph at {subject}")
+        for s, p, o in store.triples((subject, None, None)):
+            print(s, p, o)
+    return (aggregator, visited_nodes)
+
+
 def graph_traversal(
-    term: URIRef, aggregator: list, display_subject: URIRef, visited_nodes: set
+    term: Node, aggregator: List[Node], display_subject: Node, visited_nodes: Set[Node]
 ) -> Tuple[list, set]:
     """
     A recursive function to iterate through an owl definition to find restrictions on
@@ -170,66 +251,26 @@ def graph_traversal(
             RDF.type,
             OWL.Restriction,
         ) in store and subject not in visited_nodes:
-            # find the properties for the owl restriction
-            prop = list(store.objects(subject=subject, predicate=OWL.onProperty)).pop()
-            # if the restriction is a datatype property just pass buy it
-            # TODO: datatype properties could be included in a class object
-            # for now we are removing these
-            if (prop, RDF.type, OWL.DatatypeProperty) in store:
-                continue
-            class_objects = list(store.objects(subject=subject, predicate=OWL.onClass))
-            some_values = list(
-                store.objects(subject=subject, predicate=OWL.someValuesFrom)
+            aggregator, visited_nodes = parse_owl_restrictions(
+                subject, aggregator, display_subject, visited_nodes
             )
-            all_values = list(
-                store.objects(subject=subject, predicate=OWL.allValuesFrom)
-            )
-            # if the restriction is a class object iterate into the class object
-            if len(class_objects) == 1:
-                class_object = class_objects.pop()
-                aggregator.append((display_subject, prop, class_object))
-                aggregator, visited_nodes = graph_traversal(
-                    class_object, aggregator, class_object, visited_nodes
-                )
-            # if the restriction has some values, iterate into the list of these values
-            elif len(some_values) == 1:
-                value = some_values.pop()
-                union = list(store.objects(subject=value, predicate=OWL.unionOf))
-                if len(union) != 1:
-                    continue
-                for uni in array2list(union[0], []):
-                    aggregator.append((display_subject, prop, uni))
-                    aggregator, visited_nodes = graph_traversal(
-                        uni, aggregator, uni, visited_nodes
-                    )
-            # if all values, iterate into this value
-            elif len(all_values) == 1:
-                value = all_values.pop()
-                aggregator.append((display_subject, prop, value))
-                aggregator, visited_nodes = graph_traversal(
-                    value, aggregator, value, visited_nodes
-                )
-            # currently we aren't doing anything for cardinality
-            elif (subject, OWL.minCardinality, None) in store:
-                continue
-            else:
-                print(f"Error in Traversing Graph at {subject}")
-                for s, p, o in store.triples((subject, None, None)):
-                    print(s, p, o)
-
+            visited_nodes.add(subject)
         visited_nodes.add(term)
     return (aggregator, visited_nodes)
 
 
-def mermaid_formatter(links: List[Tuple[URIRef, URIRef, URIRef]]) -> str:
+def mermaid_formatter(links: List[Tuple[Node, Node, Node]]) -> str:
     """
     Takes a list of links, and formats them into a mermaid formated string
     """
+    # initialize the Node structure for Mermaid
+    nodes = NodeStructure()
+
     formatted_string = "    graph TB\n"
     for link in links:
-        subject = nodes.get_node(link[0])
+        subject = nodes.get_node(str(link[0]))
         predicate = format_values(str(link[1]))
-        obj = nodes.get_node(link[2])
+        obj = nodes.get_node(str(link[2]))
         formatted_string += f"      {subject} --{predicate}--> {obj}\n"
 
     return formatted_string
