@@ -276,6 +276,14 @@ def mermaid_formatter(links: List[Tuple[Node, Node, Node]]) -> str:
     return formatted_string
 
 
+def find_instance_triples(uri: Node, instance_store: Graph):
+    triples = store.triples((uri, None, None))
+    for triple in triples:
+        instance_store.add(triple)
+        instance_store = find_instance_triples(triple[2], instance_store)
+    return instance_store
+
+
 def main():
     """
     The main function takes the parameters, and then calls the main functions
@@ -288,6 +296,9 @@ def main():
         help="the uri which should create the base for the visualization",
     )
     parser.add_argument(
+        "-t", "--triples", action="store_true", help="print the triples for a given uri"
+    )
+    parser.add_argument(
         "rdf", nargs="+", help="the different rdf files to add to the graph"
     )
     args = parser.parse_args()
@@ -297,6 +308,12 @@ def main():
 
     uri = expand_prefix_uri(args.uri)
     onto_term = URIRef(uri)
+    if args.triples:
+        instance_store = Graph()
+        instance_store = find_instance_triples(onto_term, instance_store)
+        print(instance_store.serialize(format="turtle"))
+        return
+
     agg = []
     visited_nodes = set()
     arr, _ = graph_traversal(onto_term, agg, onto_term, visited_nodes)
