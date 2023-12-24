@@ -17,11 +17,6 @@ prefixes = {
     "sh": "http://www.w3.org/ns/shacl#",
     "skos": "http://www.w3.org/2004/02/skos/core#",
     "xsd": "http://www.w3.org/2001/XMLSchema#",
-    "dcao": "https://ontologies.semanticarts.com/dcao/",
-    "dcas": "https://ontologies.semanticarts.com/dcas/",
-    "dcax": "https://ontologies.semanticarts.com/dcax/",
-    "gist": "https://ontologies.semanticarts.com/gist/",
-    "sa": "https://ontologies.semanticarts.com/SemArts/",
 }
 
 
